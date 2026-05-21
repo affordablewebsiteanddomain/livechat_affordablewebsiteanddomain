@@ -1,48 +1,42 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Admin Chat Panel</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <style>
-        body { font-family: sans-serif; background: #f0f2f5; padding: 20px; }
-        #chat-container { width: 350px; background: white; border: 2px solid #333; padding: 15px; border-radius: 8px; }
-        #chat-list { height: 300px; overflow-y: scroll; background: #eee; margin-bottom: 10px; padding: 5px; }
-        #admin-controls { display: flex; gap: 5px; }
-        input { flex: 1; }
-    </style>
-</head>
-<body>
+<div style="display: flex; height: 100vh;">
+    <div id="sidebar" style="width: 250px; border-right: 1px solid #ccc; overflow-y: auto;">
+        <h3>Customers</h3>
+        <div id="customer-list"></div>
+    </div>
 
-<div id="chat-container">
-    <h3>Admin Chat</h3>
-    <div id="chat-list"></div>
-    <div id="admin-controls">
-        <input type="text" id="admin-input" placeholder="Type reply...">
-        <button onclick="sendReply()">Send</button>
+    <div style="flex: 1; display: flex; flex-direction: column;">
+        <div id="chat-logs" style="flex: 1; padding: 20px;"></div>
+        <div style="padding: 20px;">
+            <input id="admin-input" style="width: 80%;">
+            <button onclick="replyToUser()">Reply</button>
+        </div>
     </div>
 </div>
 
 <script>
-    const sb = supabase.createClient("https://egrurdztqvmtuomlbbep.supabase.co", "sb_publishable_I41YLESY4BLD2xnAU52vJA_kCh9k-tj");
-    const list = document.getElementById('chat-list');
+    let activeRoom = null;
 
-    // Load messages
-    sb.from("messages").select("*").order("id", { ascending: true }).then(({data}) => {
-        if(data) list.innerHTML = data.map(m => `<div><b>${m.sender}:</b> ${m.text}</div>`).join('');
+    // 1. I-load ang listahan ng mga unique na sender
+    sb.from("messages").select("sender").then(data => {
+        const uniqueSenders = [...new Set(data.data.map(m => m.sender))];
+        uniqueSenders.forEach(sender => {
+            const btn = document.createElement("button");
+            btn.innerText = sender;
+            btn.onclick = () => { activeRoom = sender; loadChat(sender); };
+            document.getElementById("customer-list").appendChild(btn);
+        });
     });
 
-    // Send reply function
-    async function sendReply() {
-        const input = document.getElementById('admin-input');
-        await sb.from("messages").insert([{ text: input.value, sender: "admin", room_id: "main" }]);
-        input.value = "";
+    // 2. I-load ang chat ng napiling customer
+    function loadChat(sender) {
+        sb.from("messages").select("*").eq("sender", sender).then(res => {
+            document.getElementById("chat-logs").innerHTML = res.data.map(m => `<div><b>${m.sender}:</b> ${m.text}</div>`).join("");
+        });
     }
 
-    // Realtime
-    sb.channel('any').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
-        list.innerHTML += `<div><b>${payload.new.sender}:</b> ${payload.new.text}</div>`;
-        list.scrollTop = list.scrollHeight;
-    }).subscribe();
+    // 3. Mag-reply sa specific na customer
+    async function replyToUser() {
+        const text = document.getElementById("admin-input").value;
+        await sb.from("messages").insert([{ text, sender: "Admin", room_id: activeRoom }]);
+    }
 </script>
-</body>
-</html>
