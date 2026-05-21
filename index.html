@@ -5,11 +5,11 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: sans-serif; display: flex; height: 100vh; margin: 0; }
-        #sidebar { width: 250px; border-right: 1px solid #ccc; padding: 10px; overflow-y: auto; background: #f4f4f4; }
+        #sidebar { width: 300px; border-right: 1px solid #ccc; padding: 10px; overflow-y: auto; background: #f4f4f4; }
         #chat-area { flex: 1; display: flex; flex-direction: column; }
         #logs { flex: 1; padding: 20px; overflow-y: auto; background: #fff; }
         #input-area { padding: 20px; border-top: 1px solid #ccc; display: flex; }
-        .user-btn { display: block; width: 100%; padding: 10px; margin-bottom: 5px; cursor: pointer; background: white; border: 1px solid #ddd; }
+        .user-btn { display: block; width: 100%; padding: 10px; margin-bottom: 5px; cursor: pointer; background: white; border: 1px solid #ddd; text-align: left; }
     </style>
 </head>
 <body>
@@ -22,38 +22,36 @@
     <div id="chat-area">
         <div id="logs"></div>
         <div id="input-area">
-            <input id="admin-in" style="flex:1;" placeholder="Reply as Admin...">
+            <input id="admin-in" style="flex:1;" placeholder="Reply to selected customer...">
             <button onclick="sendReply()">Send</button>
         </div>
     </div>
 
 <script>
-    // 1. Initialize Supabase (Global Variable)
     const sb = supabase.createClient("https://egrurdztqvmtuomlbbep.supabase.co", "sb_publishable_I41YLESY4BLD2xnAU52vJA_kCh9k-tj");
-    let activeUser = null;
+    let activeRoom = null;
 
-    // 2. I-load ang mga unique customers
+    // 1. I-load ang mga unique na customers
     async function loadCustomers() {
-        const { data, error } = await sb.from("messages").select("sender").neq("sender", "Admin");
-        if (error) { console.error("Error loading customers:", error); return; }
-        
-        const unique = [...new Set(data.map(m => m.sender))];
+        const { data } = await sb.from("messages").select("room_id");
+        if (!data) return;
+        const uniqueRooms = [...new Set(data.map(m => m.room_id))];
         const listDiv = document.getElementById("customer-list");
         listDiv.innerHTML = "";
-        unique.forEach(user => {
+        uniqueRooms.forEach(room => {
             const btn = document.createElement("button");
             btn.className = "user-btn";
-            btn.innerText = user;
-            btn.onclick = () => { activeUser = user; loadChat(user); };
+            btn.innerText = room;
+            btn.onclick = () => { activeRoom = room; loadChat(room); };
             listDiv.appendChild(btn);
         });
     }
 
-    // 3. I-load ang chat ng napiling customer
-    function loadChat(user) {
+    // 2. I-load ang chat base sa room_id (Dito ang filter!)
+    function loadChat(room) {
         document.getElementById("logs").innerHTML = "";
-        sb.from("messages").select("*").or(`sender.eq.${user},sender.eq.Admin`)
-          .order("created_at", {ascending: true}).then(res => {
+        sb.from("messages").select("*").eq("room_id", room).order("created_at", {ascending: true})
+          .then(res => {
             if (res.data) {
                 res.data.forEach(m => {
                     document.getElementById("logs").innerHTML += `<div><b>${m.sender}:</b> ${m.text}</div>`;
@@ -62,21 +60,22 @@
         });
     }
 
-    // 4. Admin Reply
+    // 3. Admin Reply (Dapat naka-room_id)
     async function sendReply() {
-        if(!activeUser) return alert("Pumili muna ng customer sa kaliwa!");
+        if(!activeRoom) return alert("Pumili muna ng customer sa kaliwa!");
         const text = document.getElementById("admin-in").value;
-        await sb.from("messages").insert([{text, sender: "Admin", room_id: activeUser}]);
+        await sb.from("messages").insert([{text, sender: "Admin", room_id: activeRoom}]);
         document.getElementById("admin-in").value = "";
     }
 
-    // Auto-update
-    sb.channel("any").on("postgres_changes", {event: "INSERT", schema: "public", table: "messages"}, () => {
-        if(activeUser) loadChat(activeUser);
+    // Auto-update (Dito ang filter para hindi magulo)
+    sb.channel("admin-channel").on("postgres_changes", {event: "INSERT", schema: "public", table: "messages"}, payload => {
+        if(activeRoom && payload.new.room_id === activeRoom) {
+            document.getElementById('logs').innerHTML += `<div><b>${payload.new.sender}:</b> ${payload.new.text}</div>`;
+        }
         loadCustomers();
     }).subscribe();
 
-    // Start
     loadCustomers();
 </script>
 </body>
