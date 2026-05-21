@@ -1,42 +1,54 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Admin Panel</title>
+    <title>Admin Chat Panel</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: sans-serif; background: #f4f4f4; padding: 20px; }
+        #chat-container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .msg { padding: 10px; border-bottom: 1px solid #ddd; }
+    </style>
 </head>
 <body>
-    <h1>Admin Chat - Main</h1>
-    <div id="chat-list"></div>
 
-    <script>
-        // SIGURADUHIN NA ITO ANG EKSAKTONG URL AT KEY
-        const supabaseUrl = 'https://egrurdztqvmtuomlbbep.supabase.co';
-        const supabaseKey = 'sb_publishable_I41YLESY4BLD2xnAU52vJA_kCh9k-tj';
-        const sb = supabase.createClient(supabaseUrl, supabaseKey);
+<div id="chat-container">
+    <h2>Live Admin Chat</h2>
+    <div id="chat-list">Naglo-load...</div>
+</div>
 
-        const list = document.getElementById('chat-list');
+<script>
+    // 1. Initialize Supabase
+    const supabaseUrl = 'https://egrurdztqvmtuomlbbep.supabase.co';
+    const supabaseKey = 'sb_publishable_I41YLESY4BLD2xnAU52vJA_kCh9k-tj';
+    const sb = supabase.createClient(supabaseUrl, supabaseKey);
 
-        // 1. Initial Load (kunin lahat ng messages)
-        async function getMessages() {
-            const { data, error } = await sb.from('messages').select('*').order('id', { ascending: true });
-            if (error) { console.error("Error fetching:", error); }
-            else {
-                list.innerHTML = data.map(m => `<div><b>${m.sender}:</b> ${m.text}</div>`).join('');
-            }
+    const chatList = document.getElementById('chat-list');
+
+    // 2. Fetch Initial Data
+    async function loadData() {
+        const { data, error } = await sb.from('messages').select('*').order('id', { ascending: false });
+        if (error) {
+            chatList.innerHTML = "Error loading: " + error.message;
+        } else {
+            chatList.innerHTML = data.map(m => `<div class="msg"><b>${m.sender}:</b> ${m.text}</div>`).join('');
         }
+    }
 
-        // 2. Realtime Listener
-        sb.channel('any')
-          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
-              console.log('Change received!', payload);
-              const m = payload.new;
-              list.innerHTML += `<div><b>${m.sender}:</b> ${m.text}</div>`;
-          })
-          .subscribe((status) => {
-              console.log("Subscription status:", status);
-          });
+    // 3. Realtime Subscription
+    sb.channel('db-messages')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
+          const m = payload.new;
+          // Add new message to top
+          const newDiv = document.createElement('div');
+          newDiv.className = 'msg';
+          newDiv.innerHTML = `<b>${m.sender}:</b> ${m.text}`;
+          chatList.prepend(newDiv); 
+      })
+      .subscribe((status) => {
+          console.log("Realtime status:", status);
+      });
 
-        getMessages();
-    </script>
+    loadData();
+</script>
 </body>
 </html>
